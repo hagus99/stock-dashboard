@@ -2,11 +2,11 @@ name: Daily Stock Data Update
 
 on:
   schedule:
-    # 매일 한국 시간 오후 5시 (UTC 08:00) 실행
+    # 매일 한국 시간 오후 5시 (UTC 08:00) 실행!
     - cron: "0 8 * * *"
   # 수동 실행 버튼 추가
   workflow_dispatch:
-  # main 브랜치에 코드가 푸시(Push)되면 실행
+  # main 브랜치에 코드가 푸시(Push)되면 실행!
   push:
     branches:
       - main
