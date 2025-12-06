@@ -10,9 +10,9 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
-  // Brush 제거됨
 } from "recharts";
 import { TrendingUp, Users, Building2, Globe, Activity, ChevronDown, Search, AlertCircle } from "lucide-react";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // --- [1] 요약 카드 컴포넌트 ---
 const Card = ({ title, value, subValue, icon: Icon, colorClass, isPrice = false }) => (
@@ -50,7 +50,6 @@ const CustomTooltip = ({ active, payload, label }) => {
     return (
       <div className="bg-white p-3 border border-slate-200 shadow-xl rounded-lg text-xs z-50">
         <p className="font-bold text-slate-700 mb-2 border-b pb-1">{label}</p>
-
         {payload
           .filter((p) => p.dataKey === "price")
           .map((entry, index) => (
@@ -62,7 +61,6 @@ const CustomTooltip = ({ active, payload, label }) => {
               <span className="font-mono font-bold text-slate-900">{entry.value.toLocaleString()} 원</span>
             </div>
           ))}
-
         {payload
           .filter((p) => p.dataKey !== "price")
           .map((entry, index) => (
@@ -89,15 +87,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("cumulative");
   const [selectedStockCode, setSelectedStockCode] = useState("005930");
   const [selectedStockName, setSelectedStockName] = useState("삼성전자");
-  const [realDataMap, setRealDataMap] = useState(null);
+  const [chartData, setChartData] = useState([]);
   const [allStockList, setAllStockList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef(null);
+  const [zoomDomain, setZoomDomain] = useState({ x: ["auto", "auto"], y: ["auto", "auto"] });
 
-  // 모바일 감지
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -116,83 +114,96 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 데이터 로드
   useEffect(() => {
-    const loadData = async () => {
+    const loadStockList = async () => {
+      try {
+        const listRes = await fetch("./company_list.json");
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          setAllStockList(listData);
+        } else {
+          setError("종목 리스트(company_list.json)를 불러오는데 실패했습니다.");
+        }
+      } catch (e) {
+        console.warn(e);
+        setError("종목 리스트를 불러오는 중 오류가 발생했습니다.");
+      }
+    };
+    loadStockList();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedStockCode) return;
+
+    const loadChartData = async () => {
       setLoading(true);
       setError(null);
+      setChartData([]);
       try {
-        try {
-          const listRes = await fetch("./company_list.json");
-          if (listRes.ok) {
-            const listData = await listRes.json();
-            setAllStockList(listData);
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        try {
-          const dataRes = await fetch("./stock_data.json");
-          if (dataRes.ok) {
-            const chartData = await dataRes.json();
-            setRealDataMap(chartData);
-          } else {
-            throw new Error("stock_data.json 파일을 찾을 수 없습니다.");
-          }
-        } catch (e) {
-          throw e;
+        const res = await fetch(`http://127.0.0.1:5001/api/stock/${selectedStockCode}`);
+        if (res.ok) {
+          const data = await res.json();
+          setChartData(data);
+        } else {
+          throw new Error("데이터를 가져오는 데 실패했습니다.");
         }
       } catch (err) {
-        console.error("Data Load Error:", err);
-        setError("데이터 로드 실패: python 스크립트를 실행하여 데이터 파일(stock_data.json)을 public 폴더에 넣어주세요.");
+        console.error("Chart Data Load Error:", err);
+        setError(`'${selectedStockName}'의 데이터를 가져올 수 없습니다. 백엔드 서버가 실행 중인지 확인해주세요.`);
       } finally {
         setLoading(false);
       }
     };
-    loadData();
-  }, []);
 
-  const displayData = useMemo(() => {
-    if (realDataMap && realDataMap[selectedStockCode]) {
-      return realDataMap[selectedStockCode];
-    }
-    return [];
-  }, [realDataMap, selectedStockCode]);
+    loadChartData();
+  }, [selectedStockCode, selectedStockName]);
 
   const filteredData = useMemo(() => {
-    if (!displayData || displayData.length === 0) return [];
-    return displayData.length > timeRange ? displayData.slice(displayData.length - timeRange) : displayData;
-  }, [displayData, timeRange]);
+    if (!chartData || chartData.length === 0) return [];
+    const data = chartData.length > timeRange ? chartData.slice(chartData.length - timeRange) : chartData;
+    // This is a simplified zoom logic. A more sophisticated implementation would be needed for a real application.
+    if (zoomDomain.x[0] !== "auto") {
+        return data.slice(zoomDomain.x[0], zoomDomain.x[1]);
+    }
+    return data;
+  }, [chartData, timeRange, zoomDomain]);
 
   const filteredStockList = useMemo(() => {
-    if (!searchTerm) return [];
-    return allStockList
-      .filter((item) => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.code.includes(searchTerm))
-      .slice(0, 50);
+    const list = searchTerm
+      ? allStockList.filter(
+          (item) => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.code.includes(searchTerm)
+        )
+      : allStockList;
+    return list.slice(0, 50);
   }, [searchTerm, allStockList]);
 
   const latestData = filteredData.length > 0 ? filteredData[filteredData.length - 1] : {};
   const firstData = filteredData.length > 0 ? filteredData[0] : {};
-  const hasData = filteredData.length > 0;
+  const hasData = !loading && filteredData.length > 0;
 
+  const handleZoom = (ref) => {
+    if (!ref.state) return;
+    const { scale } = ref.state;
+    const dataSize = filteredData.length;
+    const startIndex = Math.floor(dataSize * (1 - 1 / scale) / 2);
+    const endIndex = dataSize - startIndex;
+    setZoomDomain({ x: [startIndex, endIndex], y: ["auto", "auto"] });
+  };
+  
   return (
     <div className="min-h-screen bg-slate-50 p-3 md:p-8 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
         <header className="flex flex-col gap-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-3xl font-bold text-slate-900 flex items-center gap-2">
                 <Activity className="w-6 h-6 md:w-8 md:h-8 text-indigo-600" />
-                투자자별 매매동향
+                투자자별 매매동향 (실시간)
               </h1>
               <p className="text-slate-500 mt-1 flex items-center gap-2 text-sm md:text-base">
-                <span className="font-semibold text-green-600">LIVE DATA</span>- {selectedStockName} ({selectedStockCode})
+                <span className="font-semibold text-green-600">LIVE</span>- {selectedStockName} ({selectedStockCode})
               </p>
             </div>
-
-            {/* 검색창 */}
             <div className="relative w-full md:w-auto" ref={searchRef}>
               <div
                 className="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm hover:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all w-full md:w-72"
@@ -212,7 +223,6 @@ export default function App() {
                 />
                 <ChevronDown className={`w-4 h-4 text-slate-400 mr-3 shrink-0 transition-transform ${isSearchOpen ? "rotate-180" : ""}`} />
               </div>
-
               {isSearchOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
                   {filteredStockList.length > 0 ? (
@@ -235,11 +245,6 @@ export default function App() {
                             {item.code} | {item.market}
                           </span>
                         </div>
-                        {realDataMap && realDataMap[item.code] ? (
-                          <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">Data</span>
-                        ) : (
-                          <span className="text-[10px] text-slate-300 shrink-0">No Data</span>
-                        )}
                       </button>
                     ))
                   ) : (
@@ -251,8 +256,6 @@ export default function App() {
               )}
             </div>
           </div>
-
-          {/* 기간 선택 버튼 (슬라이더 대신 사용) */}
           <div className="flex overflow-x-auto pb-1 gap-1 no-scrollbar">
             <div className="flex bg-white p-1 rounded-lg border border-slate-200 shadow-sm shrink-0">
               {[
@@ -275,13 +278,20 @@ export default function App() {
           </div>
         </header>
 
+        {loading && (
+          <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-slate-200 text-center min-h-[400px]">
+             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+             <p className="text-slate-500">'{selectedStockName}' 데이터를 불러오는 중입니다...</p>
+          </div>
+        )}
+
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200 text-sm flex items-center gap-2 animate-pulse">
+          <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200 text-sm flex items-center gap-2">
             ⚠️ {error}
           </div>
         )}
 
-        {hasData ? (
+        {hasData && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
               <Card
@@ -314,7 +324,6 @@ export default function App() {
                 colorClass="text-emerald-600 bg-emerald-100"
               />
             </div>
-
             <div className="bg-white p-3 md:p-6 rounded-2xl shadow-sm border border-slate-100 relative">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
                 <h2 className="text-lg md:text-xl font-bold text-slate-800">주가 vs 수급 차트</h2>
@@ -338,118 +347,77 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 차트 영역: Brush 제거됨, Auto Scale 적용 */}
-              <div className="h-[450px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={filteredData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
-                      tickLine={false}
-                      axisLine={{ stroke: "#e2e8f0" }}
-                      minTickGap={35}
-                      tickFormatter={(str) => {
-                        const d = new Date(str);
-                        return `${d.getMonth() + 1}.${d.getDate()}`;
-                      }}
-                    />
-
-                    {/* 좌측 Y축: 순매수 수량 (Auto Scale) */}
-                    <YAxis
-                      yAxisId="left"
-                      domain={["auto", "auto"]}
-                      tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
-                      tickFormatter={(value) => `${(value / 10000).toFixed(0)}`}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                    />
-
-                    {/* 우측 Y축: 주가 (Auto Scale) */}
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      domain={["auto", "auto"]}
-                      tick={{ fill: "#1e293b", fontSize: isMobile ? 10 : 12, fontWeight: 600 }}
-                      tickFormatter={(value) => (value / 1000).toFixed(0) + "k"}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                    />
-
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? "11px" : "14px" }} />
-
-                    <ReferenceLine yAxisId="left" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
-
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="price"
-                      name="주가"
-                      stroke="#1e293b"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 6, fill: "#1e293b" }}
-                      zIndex={10}
-                    />
-
-                    {activeTab === "cumulative" ? (
-                      <>
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
-                          dataKey="cumPersonal"
-                          name="개인"
-                          stroke="#f97316"
-                          strokeWidth={1.5}
-                          dot={false}
+              <div className="h-[450px] w-full touch-none">
+                <TransformWrapper onZoom={handleZoom} onPanning={handleZoom}>
+                  <TransformComponent>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={filteredData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "#e2e8f0" }}
+                          minTickGap={isMobile ? 70 : 35}
+                          tickFormatter={(str) => {
+                            const d = new Date(str);
+                            return `${d.getMonth() + 1}.${d.getDate()}`;
+                          }}
+                          domain={zoomDomain.x}
                         />
-                        <Line
+                        <YAxis
                           yAxisId="left"
-                          type="monotone"
-                          dataKey="cumForeigner"
-                          name="외국인"
-                          stroke="#9333ea"
-                          strokeWidth={1.5}
-                          dot={false}
+                          domain={zoomDomain.y}
+                          tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
+                          tickFormatter={(value) => `${(value / 10000).toFixed(0)}`}
+                          axisLine={false}
+                          tickLine={false}
+                          width={40}
                         />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          domain={zoomDomain.y}
+                          tick={{ fill: "#1e293b", fontSize: isMobile ? 10 : 12, fontWeight: 600 }}
+                          tickFormatter={(value) => (value / 1000).toFixed(0) + "k"}
+                          axisLine={false}
+                          tickLine={false}
+                          width={40}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? "11px" : "14px" }} />
+                        <ReferenceLine yAxisId="left" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
                         <Line
-                          yAxisId="left"
+                          yAxisId="right"
                           type="monotone"
-                          dataKey="cumInstitution"
-                          name="기관"
-                          stroke="#10b981"
-                          strokeWidth={1.5}
+                          dataKey="price"
+                          name="주가"
+                          stroke="#1e293b"
+                          strokeWidth={2}
                           dot={false}
+                          activeDot={{ r: 6, fill: "#1e293b" }}
+                          zIndex={10}
                         />
-                      </>
-                    ) : (
-                      <>
-                        <Bar yAxisId="left" dataKey="personal" name="개인" fill="#f97316" opacity={0.8} radius={[2, 2, 0, 0]} />
-                        <Bar yAxisId="left" dataKey="foreigner" name="외국인" fill="#9333ea" opacity={0.8} radius={[2, 2, 0, 0]} />
-                        <Bar yAxisId="left" dataKey="institution" name="기관" fill="#10b981" opacity={0.8} radius={[2, 2, 0, 0]} />
-                      </>
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
+                        {activeTab === "cumulative" ? (
+                          <>
+                            <Line yAxisId="left" type="monotone" dataKey="cumPersonal" name="개인" stroke="#f97316" strokeWidth={1.5} dot={false} />
+                            <Line yAxisId="left" type="monotone" dataKey="cumForeigner" name="외국인" stroke="#9333ea" strokeWidth={1.5} dot={false} />
+                            <Line yAxisId="left" type="monotone" dataKey="cumInstitution" name="기관" stroke="#10b981" strokeWidth={1.5} dot={false} />
+                          </>
+                        ) : (
+                          <>
+                            <Bar yAxisId="left" dataKey="personal" name="개인" fill="#f97316" opacity={0.8} radius={[2, 2, 0, 0]} />
+                            <Bar yAxisId="left" dataKey="foreigner" name="외국인" fill="#9333ea" opacity={0.8} radius={[2, 2, 0, 0]} />
+                            <Bar yAxisId="left" dataKey="institution" name="기관" fill="#10b981" opacity={0.8} radius={[2, 2, 0, 0]} />
+                          </>
+                        )}
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </TransformComponent>
+                </TransformWrapper>
               </div>
             </div>
           </>
-        ) : (
-          <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-slate-200 text-center min-h-[400px]">
-            <div className="bg-slate-100 p-4 rounded-full mb-4">
-              <AlertCircle className="w-8 h-8 text-slate-400" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">'{selectedStockName}' 데이터가 없습니다</h3>
-            <p className="text-slate-500 max-w-md text-sm">
-              현재 데모 버전에서는 일부 상위 종목의 데이터만 수집되어 있습니다.
-              <br />
-              <br />
-              Python 수집기(stock_data_collector.py)에 해당 종목 코드(<strong>{selectedStockCode}</strong>)를 추가하고 실행해주세요.
-            </p>
-          </div>
         )}
       </div>
     </div>

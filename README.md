@@ -1,16 +1,47 @@
-# React + Vite
+# Stock Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is a stock dashboard application that allows you to view stock data. It uses React for the frontend and Flask for the backend.
 
-Currently, two official plugins are available:
+## How to Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+There are two parts to this application: the frontend and the backend. You need to run both for the application to work.
 
-## React Compiler
+### Backend
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd backend
+    ```
 
-## Expanding the ESLint configuration
+2.  **Install the Python dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3.  **Run the backend server:**
+    ```bash
+    python app.py
+    ```
+    The backend server will start on `http://127.0.0.1:5001`.
+
+### Frontend
+
+1.  **Navigate to the project root directory.**
+
+2.  **Install the JavaScript dependencies:**
+    ```bash
+    npm install
+    ```
+
+3.  **Run the frontend development server:**
+    ```bash
+    npm run dev
+    ```
+    The frontend will be available at `http://localhost:5173`.
+
+## How it Works
+
+- The frontend is a React application created with Vite.
+- The backend is a Flask server that provides an API to fetch stock data.
+- When you select a stock in the frontend, it makes an API call to the backend.
+- The backend then uses the `pykrx` library to fetch the latest stock data and returns it to the frontend.
