@@ -2,11 +2,11 @@ name: Daily Stock Data Update
 
 on:
   schedule:
-    # 매일 한국 시간 오후 5시 (UTC 08:00) 실행!
+    # 매일 한국 시간 오후 5시 (UTC 08:00) 실행
     - cron: "0 8 * * *"
   # 수동 실행 버튼 추가
   workflow_dispatch:
-  # main 브랜치에 코드가 푸시(Push)되면 실행!
+  # main 브랜치에 코드가 푸시(Push)되면 실행
   push:
     branches:
       - main
@@ -27,17 +27,18 @@ jobs:
         with:
           python-version: "3.9"
 
+      # [수정 1] requirements.txt 파일 없이 직접 설치하도록 변경 (에러 방지)
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install pandas pykrx
 
       - name: Run Data Collector
         run: |
           python stock_data_collector.py
           # 생성된 json 파일들을 public 폴더로 이동 (이미 있다면 덮어쓰기)
-          mv company_list.json public/
-          mv stock_data.json public/
+          mv -f company_list.json public/
+          mv -f stock_data.json public/
 
       - name: Commit and Push Data Changes
         run: |
@@ -59,6 +60,10 @@ jobs:
       - name: Build and Deploy to GitHub Pages
         run: |
           npm run build
-          # gh-pages 패키지를 사용해 배포 (git config 필요)
-          git remote set-url origin https://git:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          # [수정 2] 배포 인증 방식을 더 확실한 x-access-token으로 변경
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           npm run deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
