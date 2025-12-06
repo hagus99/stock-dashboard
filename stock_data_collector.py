@@ -4,59 +4,56 @@ from datetime import datetime, timedelta
 import pandas as pd
 from pykrx import stock
 
+def get_latest_business_day():
+    """
+    오늘이 주말(토/일)이면 가장 최근 금요일 날짜를 반환합니다.
+    """
+    now = datetime.now()
+    # weekday(): 0(월) ~ 6(일)
+    if now.weekday() == 5: # 토요일
+        return (now - timedelta(days=1)).strftime("%Y%m%d")
+    elif now.weekday() == 6: # 일요일
+        return (now - timedelta(days=2)).strftime("%Y%m%d")
+    return now.strftime("%Y%m%d")
+
 def get_all_company_list():
-    """
-    KOSPI 및 KOSDAQ의 모든 상장 종목 코드와 이름을 가져와 저장합니다.
-    (검색 기능을 위한 마스터 데이터 생성)
-    """
     print("전체 종목 리스트(KOSPI, KOSDAQ)를 수집 중입니다... (약 1~2분 소요)")
-    
-    market_list = ["KOSPI", "KOSDAQ"]
     company_list = []
     
-    # 기준일 (오늘)
+    # 종목 리스트는 오늘 날짜 기준(주말이어도 조회 가능)
     today = datetime.now().strftime("%Y%m%d")
 
-    for market in market_list:
+    for market in ["KOSPI", "KOSDAQ"]:
         try:
-            # 해당 시장의 전체 티커 리스트 가져오기
             tickers = stock.get_market_ticker_list(today, market=market)
-            
-            # 티커별 종목명 매핑
             for ticker in tickers:
                 name = stock.get_market_ticker_name(ticker)
-                company_list.append({
-                    "code": ticker,
-                    "name": name,
-                    "market": market
-                })
+                company_list.append({"code": ticker, "name": name, "market": market})
         except Exception as e:
-            print(f"{market} 리스트 수집 중 에러: {e}")
+            print(f"{market} 리스트 수집 에러: {e}")
 
-    # JSON 저장
     with open("company_list.json", 'w', encoding='utf-8') as f:
-        json.dump(company_list, f, ensure_ascii=False, indent=None) # 용량 줄이기 위해 indent 제거
-        
-    print(f"✅ 전체 종목 리스트 수집 완료: {len(company_list)}개 저장됨 (company_list.json)")
-    return company_list
+        json.dump(company_list, f, ensure_ascii=False, indent=None)
+    print(f"✅ 종목 리스트 완료: {len(company_list)}개")
 
 def fetch_single_stock(ticker, days=365):
-    """개별 종목 수급/주가 데이터 수집"""
-    end_date = datetime.now().strftime("%Y%m%d")
-    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    # [핵심 수정] 종료일을 '오늘'이 아닌 '최근 영업일(평일)'로 설정
+    end_date = get_latest_business_day()
+    start_date = (datetime.strptime(end_date, "%Y%m%d") - timedelta(days=days)).strftime("%Y%m%d")
     
-    print(f"   [{ticker}] 데이터 수집 중 ({start_date}~{end_date})...")
+    print(f"   [{ticker}] 수집 기간: {start_date} ~ {end_date}")
 
     try:
         # 1. 주가 (OHLCV)
         df_ohlcv = stock.get_market_ohlcv(start_date, end_date, ticker)
-        time.sleep(0.2) 
+        time.sleep(0.3) 
 
-        # 2. 거래량 (수급) - 호환성 고려 함수
+        # 2. 거래량 (수급)
         df_investor = stock.get_market_trading_volume_by_date(start_date, end_date, ticker)
-        time.sleep(0.2)
+        time.sleep(0.3)
 
         if df_investor.empty:
+            print(f"   ⚠️ 데이터 없음")
             return []
 
         # 3. 전처리
@@ -101,14 +98,10 @@ def fetch_single_stock(ticker, days=365):
         return []
 
 def update_data():
-    # 1. 전체 종목 리스트 생성 (검색용)
-    # 매번 실행할 필요는 없지만, 신규 상장을 위해 포함
+    # 1. 종목 리스트 생성 (필요시 주석 해제하여 실행)
     get_all_company_list()
 
-    # 2. 차트 데이터 수집 (상위 관심 종목만)
-    # 모든 종목(2600개)을 매일 수집하면 시간이 너무 오래 걸리므로, 
-    # 예시로 시가총액 상위 5개(삼성, 하이닉스, LG엔솔, 바하, 현대차) + 포스코만 수집합니다.
-    # 필요하면 여기에 종목 코드를 추가하세요.
+    # 2. 차트 데이터 수집
     target_tickers = {
         "005930": "삼성전자",
         "000660": "SK하이닉스",
@@ -119,18 +112,18 @@ def update_data():
     }
     
     full_data = {}
-    print("\n차트 데이터 수집 시작 (주요 종목)...")
+    print("\n차트 데이터 수집 시작 (주말 보정 적용)...")
     
     for code, name in target_tickers.items():
         data = fetch_single_stock(code)
         if data:
-            full_data[code] = data # key를 종목코드로 저장 (중요)
-            print(f"   ✅ {name}({code}) 완료")
+            full_data[code] = data
+            print(f"   ✅ {name} 완료 ({len(data)}일치)")
     
     with open("stock_data.json", 'w', encoding='utf-8') as f:
         json.dump(full_data, f, ensure_ascii=False, indent=2)
     
-    print(f"\n✨ 모든 작업 완료. 'company_list.json'과 'stock_data.json'을 public 폴더로 이동하세요.")
+    print(f"\n✨ 'stock_data.json' 저장 완료. public 폴더로 이동해주세요.")
 
 if __name__ == "__main__":
     update_data()
