@@ -1,4 +1,4 @@
-name: Daily Stock Data Update & Deploy
+name: Daily Stock Data Update
 
 on:
   schedule:
@@ -6,63 +6,59 @@ on:
     - cron: "0 8 * * *"
   # 수동 실행 버튼 추가
   workflow_dispatch:
-  # main 브랜치에 코드가 푸시(Push)되면 실행!
+  # main 브랜치에 코드가 푸시(Push)되면 실행
   push:
     branches:
       - main
 
-# 권한 설정 (배포를 위해 쓰기 권한 필요)
 permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 저장소의 코드를 내려받습니다.
-      - name: Checkout repository
+      - name: Checkout content
         uses: actions/checkout@v3
 
-      # 2. 파이썬 3.9 버전을 설치합니다.
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
 
-      # 3. 파이썬 라이브러리(pandas, pykrx)를 설치합니다.
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas pykrx
+          pip install -r requirements.txt
 
-      # 4. 데이터 수집 스크립트를 실행합니다.
       - name: Run Data Collector
         run: |
           python stock_data_collector.py
-          # 생성된 데이터 파일들을 public 폴더로 이동 (이미 있으면 덮어씀)
-          # React 빌드 시 public 폴더에 있어야 포함됨
-          mv -f company_list.json public/
-          mv -f stock_data.json public/
+          # 생성된 json 파일들을 public 폴더로 이동 (이미 있다면 덮어쓰기)
+          mv company_list.json public/
+          mv stock_data.json public/
 
-      # 5. Node.js 18 버전을 설치합니다. (React 빌드용)
+      - name: Commit and Push Data Changes
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add public/stock_data.json public/company_list.json
+          # 변경 사항이 있을 때만 커밋
+          git commit -m "Auto-update stock data" || exit 0
+          git push
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      # 6. React 패키지들을 설치합니다.
       - name: Install Node dependencies
         run: npm install
 
-      # 7. React 앱을 빌드하고 GitHub Pages로 배포합니다.
-      - name: Build and Deploy
+      - name: Build and Deploy to GitHub Pages
         run: |
           npm run build
-          # gh-pages 도구를 사용해 배포 (인증 정보 설정 포함)
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          # gh-pages 패키지를 사용해 배포 (git config 필요)
+          git remote set-url origin https://git:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           npm run deploy
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
