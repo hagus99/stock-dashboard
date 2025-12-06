@@ -6,7 +6,7 @@ on:
     - cron: "0 8 * * *"
   # 수동 실행 버튼 추가
   workflow_dispatch:
-  # main 브랜치에 코드가 푸시(Push)되면 실행
+  # main 브랜치에 코드가 푸시(Push)되면 실행!
   push:
     branches:
       - main
