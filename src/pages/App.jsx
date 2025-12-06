@@ -12,7 +12,6 @@ import {
   ReferenceLine,
 } from "recharts";
 import { TrendingUp, Users, Building2, Globe, Activity, ChevronDown, Search, AlertCircle } from "lucide-react";
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // --- [1] 요약 카드 컴포넌트 ---
 const Card = ({ title, value, subValue, icon: Icon, colorClass, isPrice = false }) => (
@@ -50,6 +49,7 @@ const CustomTooltip = ({ active, payload, label }) => {
     return (
       <div className="bg-white p-3 border border-slate-200 shadow-xl rounded-lg text-xs z-50">
         <p className="font-bold text-slate-700 mb-2 border-b pb-1">{label}</p>
+
         {payload
           .filter((p) => p.dataKey === "price")
           .map((entry, index) => (
@@ -61,6 +61,7 @@ const CustomTooltip = ({ active, payload, label }) => {
               <span className="font-mono font-bold text-slate-900">{entry.value.toLocaleString()} 원</span>
             </div>
           ))}
+
         {payload
           .filter((p) => p.dataKey !== "price")
           .map((entry, index) => (
@@ -94,8 +95,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef(null);
-  const [zoomDomain, setZoomDomain] = useState({ x: ["auto", "auto"], y: ["auto", "auto"] });
-
+  
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -114,6 +114,7 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 종목 리스트 로드
   useEffect(() => {
     const loadStockList = async () => {
       try {
@@ -132,6 +133,7 @@ export default function App() {
     loadStockList();
   }, []);
 
+  // 선택된 종목 데이터 로드
   useEffect(() => {
     if (!selectedStockCode) return;
 
@@ -140,7 +142,7 @@ export default function App() {
       setError(null);
       setChartData([]);
       try {
-        const res = await fetch(`http://127.0.0.1:5001/api/stock/${selectedStockCode}`);
+        const res = await fetch(`/api/stock/${selectedStockCode}`);
         if (res.ok) {
           const data = await res.json();
           setChartData(data);
@@ -160,13 +162,8 @@ export default function App() {
 
   const filteredData = useMemo(() => {
     if (!chartData || chartData.length === 0) return [];
-    const data = chartData.length > timeRange ? chartData.slice(chartData.length - timeRange) : chartData;
-    // This is a simplified zoom logic. A more sophisticated implementation would be needed for a real application.
-    if (zoomDomain.x[0] !== "auto") {
-        return data.slice(zoomDomain.x[0], zoomDomain.x[1]);
-    }
-    return data;
-  }, [chartData, timeRange, zoomDomain]);
+    return chartData.length > timeRange ? chartData.slice(chartData.length - timeRange) : chartData;
+  }, [chartData, timeRange]);
 
   const filteredStockList = useMemo(() => {
     const list = searchTerm
@@ -181,15 +178,6 @@ export default function App() {
   const firstData = filteredData.length > 0 ? filteredData[0] : {};
   const hasData = !loading && filteredData.length > 0;
 
-  const handleZoom = (ref) => {
-    if (!ref.state) return;
-    const { scale } = ref.state;
-    const dataSize = filteredData.length;
-    const startIndex = Math.floor(dataSize * (1 - 1 / scale) / 2);
-    const endIndex = dataSize - startIndex;
-    setZoomDomain({ x: [startIndex, endIndex], y: ["auto", "auto"] });
-  };
-  
   return (
     <div className="min-h-screen bg-slate-50 p-3 md:p-8 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -347,74 +335,69 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="h-[450px] w-full touch-none">
-                <TransformWrapper onZoom={handleZoom} onPanning={handleZoom}>
-                  <TransformComponent>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={filteredData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
-                          tickLine={false}
-                          axisLine={{ stroke: "#e2e8f0" }}
-                          minTickGap={isMobile ? 70 : 35}
-                          tickFormatter={(str) => {
-                            const d = new Date(str);
-                            return `${d.getMonth() + 1}.${d.getDate()}`;
-                          }}
-                          domain={zoomDomain.x}
-                        />
-                        <YAxis
-                          yAxisId="left"
-                          domain={zoomDomain.y}
-                          tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
-                          tickFormatter={(value) => `${(value / 10000).toFixed(0)}`}
-                          axisLine={false}
-                          tickLine={false}
-                          width={40}
-                        />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          domain={zoomDomain.y}
-                          tick={{ fill: "#1e293b", fontSize: isMobile ? 10 : 12, fontWeight: 600 }}
-                          tickFormatter={(value) => (value / 1000).toFixed(0) + "k"}
-                          axisLine={false}
-                          tickLine={false}
-                          width={40}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? "11px" : "14px" }} />
-                        <ReferenceLine yAxisId="left" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="price"
-                          name="주가"
-                          stroke="#1e293b"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 6, fill: "#1e293b" }}
-                          zIndex={10}
-                        />
-                        {activeTab === "cumulative" ? (
-                          <>
-                            <Line yAxisId="left" type="monotone" dataKey="cumPersonal" name="개인" stroke="#f97316" strokeWidth={1.5} dot={false} />
-                            <Line yAxisId="left" type="monotone" dataKey="cumForeigner" name="외국인" stroke="#9333ea" strokeWidth={1.5} dot={false} />
-                            <Line yAxisId="left" type="monotone" dataKey="cumInstitution" name="기관" stroke="#10b981" strokeWidth={1.5} dot={false} />
-                          </>
-                        ) : (
-                          <>
-                            <Bar yAxisId="left" dataKey="personal" name="개인" fill="#f97316" opacity={0.8} radius={[2, 2, 0, 0]} />
-                            <Bar yAxisId="left" dataKey="foreigner" name="외국인" fill="#9333ea" opacity={0.8} radius={[2, 2, 0, 0]} />
-                            <Bar yAxisId="left" dataKey="institution" name="기관" fill="#10b981" opacity={0.8} radius={[2, 2, 0, 0]} />
-                          </>
-                        )}
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </TransformComponent>
-                </TransformWrapper>
+              <div className="h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={filteredData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
+                      tickLine={false}
+                      axisLine={{ stroke: "#e2e8f0" }}
+                      minTickGap={35}
+                      tickFormatter={(str) => {
+                        const d = new Date(str);
+                        return `${d.getMonth() + 1}.${d.getDate()}`;
+                      }}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      domain={["auto", "auto"]}
+                      tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }}
+                      tickFormatter={(value) => `${(value / 10000).toFixed(0)}`}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      domain={["auto", "auto"]}
+                      tick={{ fill: "#1e293b", fontSize: isMobile ? 10 : 12, fontWeight: 600 }}
+                      tickFormatter={(value) => (value / 1000).toFixed(0) + "k"}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: isMobile ? "11px" : "14px" }} />
+                    <ReferenceLine yAxisId="left" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="price"
+                      name="주가"
+                      stroke="#1e293b"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 6, fill: "#1e293b" }}
+                      zIndex={10}
+                    />
+                    {activeTab === "cumulative" ? (
+                      <>
+                        <Line yAxisId="left" type="monotone" dataKey="cumPersonal" name="개인" stroke="#f97316" strokeWidth={1.5} dot={false} />
+                        <Line yAxisId="left" type="monotone" dataKey="cumForeigner" name="외국인" stroke="#9333ea" strokeWidth={1.5} dot={false} />
+                        <Line yAxisId="left" type="monotone" dataKey="cumInstitution" name="기관" stroke="#10b981" strokeWidth={1.5} dot={false} />
+                      </>
+                    ) : (
+                      <>
+                        <Bar yAxisId="left" dataKey="personal" name="개인" fill="#f97316" opacity={0.8} radius={[2, 2, 0, 0]} />
+                        <Bar yAxisId="left" dataKey="foreigner" name="외국인" fill="#9333ea" opacity={0.8} radius={[2, 2, 0, 0]} />
+                        <Bar yAxisId="left" dataKey="institution" name="기관" fill="#10b981" opacity={0.8} radius={[2, 2, 0, 0]} />
+                      </>
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </>

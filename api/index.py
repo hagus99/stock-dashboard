@@ -80,13 +80,10 @@ def fetch_single_stock(ticker, days=365):
         print(f"   ❌ 오류 발생 ({ticker}): {e}")
         return []
 
-@app.route('/api/stock/<code>', methods=['GET'])
+@app.route('/stock/<code>', methods=['GET'])
 def get_stock_data(code):
     data = fetch_single_stock(code)
     if data:
         return jsonify(data)
     else:
         return jsonify({"error": "Data not found"}), 404
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
